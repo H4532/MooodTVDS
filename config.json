@@ -1,0 +1,7 @@
+{
+  "video": "video.mp4",
+  "loop": true,
+  "muted": true,
+  "volume": 1,
+  "fit": "contain"
+}
