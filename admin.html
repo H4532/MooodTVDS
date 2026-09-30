@@ -78,7 +78,7 @@ label{display:block;color:#ddd;margin:9px 0 6px}.pill{font-size:12px;padding:4px
         <label>Video or Photo</label>
         <input id="file" type="file" accept="video/mp4,.mp4,image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp">
         <div id="validation" class="small" style="margin-top:7px"></div>
-        <button id="uploadBtn" style="width:100%;margin-top:10px">Upload Draft to Selected TV</button>
+        <button id="uploadBtn" style="width:100%;margin-top:10px">Upload & Publish to Selected TV</button>
         <div class="bar" style="margin-top:10px"><div id="progress"></div></div>
         <div id="uploadMsg" style="margin-top:8px"></div>
         <div class="row" style="margin-top:10px">
@@ -211,6 +211,26 @@ $('logoutBtn').onclick=async()=>{await fetch('/api/logout',{method:'POST',creden
 $('refreshBtn').onclick=refreshAll;
 $('addTvBtn').onclick=async()=>{const id=$('newTvId').value.trim();if(!id)return;const r=await api('/api/tvs',{method:'POST',body:JSON.stringify({tv:id})});tvs=r.tvs;selectedTv=id.toLowerCase().replace(/[^a-z0-9_-]/g,'')||'tv1';$('newTvId').value='';await refreshAll()};
 
+async function normalizeImage(file){
+  if(!(file.type||'').startsWith('image/') && !/\.(jpe?g|png|webp)$/i.test(file.name)) return file;
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((resolve,reject)=>{const i=new Image();i.onload=()=>resolve(i);i.onerror=reject;i.src=url});
+    const MAX=3840;
+    let w=img.naturalWidth,h=img.naturalHeight;
+    const scale=Math.min(1,MAX/Math.max(w,h));
+    w=Math.max(1,Math.round(w*scale));h=Math.max(1,Math.round(h*scale));
+    const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
+    const ctx=canvas.getContext('2d');
+    ctx.fillStyle='#000';ctx.fillRect(0,0,w,h);
+    ctx.drawImage(img,0,0,w,h);
+    const blob=await new Promise(resolve=>canvas.toBlob(resolve,'image/jpeg',0.92));
+    if(!blob) throw new Error('Photo conversion failed');
+    const base=file.name.replace(/\.[^.]+$/,'').replace(/[^a-zA-Z0-9._-]/g,'_')||'photo';
+    return new File([blob],base+'.jpg',{type:'image/jpeg',lastModified:Date.now()});
+  }finally{URL.revokeObjectURL(url)}
+}
+
 $('file').onchange=()=>{
   const f=$('file').files[0];if(!f)return;
   if(!/\.(mp4|jpe?g|png|webp)$/i.test(f.name)){$('validation').textContent='Supported: MP4, JPG, PNG, WebP';return}
@@ -223,7 +243,11 @@ $('file').onchange=()=>{
   }
 };
 $('uploadBtn').onclick=async()=>{
-  const f=$('file').files[0];if(!f)return alert('Choose an MP4 first');
+  let f=$('file').files[0];if(!f)return alert('Choose a video or photo first');
+  if((f.type||'').startsWith('image/') || /\.(jpe?g|png|webp)$/i.test(f.name)){
+    $('uploadMsg').textContent='Optimizing photo for Samsung TV...';
+    try{f=await normalizeImage(f)}catch(e){$('uploadMsg').className='bad';$('uploadMsg').textContent=e.message;return}
+  }
   $('uploadBtn').disabled=true;$('progress').style.width='0%';$('uploadMsg').textContent='Preparing upload...';
   try{
     const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
@@ -231,7 +255,13 @@ $('uploadBtn').onclick=async()=>{
       access:'public',handleUploadUrl:'/api/upload-presigned',clientPayload:JSON.stringify({tv:selectedTv}),multipart:true,
       onUploadProgress:p=>{$('progress').style.width=Math.round(p.percentage||0)+'%';$('uploadMsg').textContent='Uploading '+Math.round(p.percentage||0)+'%'}
     });
-    $('progress').style.width='100%';$('uploadMsg').className='ok';$('uploadMsg').textContent='Draft uploaded to '+selectedTv+'. Preview on the right, then publish.';await refreshAll();setPreview(state.draft,'Draft preview');
+    $('progress').style.width='100%';$('uploadMsg').className='ok';$('uploadMsg').textContent='Uploaded to '+selectedTv+'. Publishing now...';await refreshAll();setPreview(state.draft,'Draft preview');
+    if(state?.draft?.url){
+      await api('/api/publish',{method:'POST',body:JSON.stringify({tv:selectedTv})});
+      await refreshAll();
+      setPreview(state.current?.current,'Current live media');
+      $('uploadMsg').className='ok';$('uploadMsg').textContent='Uploaded and published to '+selectedTv+'.';
+    }
   }catch(e){$('uploadMsg').className='bad';$('uploadMsg').textContent=e.message}finally{$('uploadBtn').disabled=false}
 };
 $('showCurrentBtn').onclick=()=>setPreview(state?.current?.current,'Current live video');
