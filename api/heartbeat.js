@@ -5,7 +5,7 @@ export default async function handler(req,res){
   if(req.method==='OPTIONS') return res.status(204).end();
   if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
   const tv=safeTvId(req.body?.tv);
-  const registry=await (await import('../lib/state.js')).readJson('state/registry.json',['tv1']);
+  const registry=await (await import('../lib/state.js')).readJson('state/registry.json',['tv1','tv2']);
   const tvs=[...new Set([...(Array.isArray(registry)?registry:[]),tv])];
   await (await import('../lib/state.js')).writeJson('state/registry.json',tvs);
   const data={
