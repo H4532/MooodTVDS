@@ -1,0 +1,71 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Moood TV Admin</title>
+<style>
+body{font-family:Arial,sans-serif;background:#111;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+.card{width:min(520px,92vw);background:#1c1c1c;border-radius:16px;padding:28px;box-sizing:border-box;box-shadow:0 10px 40px rgba(0,0,0,.45)}
+h1{margin:0 0 8px;font-size:28px}.sub{color:#bbb;margin-bottom:24px}
+label{display:block;margin:14px 0 6px;color:#ddd}input{width:100%;box-sizing:border-box;padding:13px;border-radius:9px;border:1px solid #444;background:#0d0d0d;color:#fff;font-size:16px}
+button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:9px;font-size:17px;font-weight:700;cursor:pointer}
+button:disabled{opacity:.55;cursor:not-allowed}.progress{height:10px;background:#333;border-radius:6px;margin-top:18px;overflow:hidden}.bar{height:100%;width:0;background:#fff;transition:width .2s}
+#msg{margin-top:14px;min-height:22px;color:#ddd}.ok{color:#86efac!important}.err{color:#fca5a5!important}
+small{display:block;color:#888;margin-top:18px;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="card">
+<h1>Moood TV Upload</h1>
+<div class="sub">Replace the video shown on the café TV.</div>
+<form id="form">
+<label>Username</label><input id="user" autocomplete="username" required>
+<label>Password</label><input id="pass" type="password" autocomplete="current-password" required>
+<label>New video (MP4)</label><input id="file" type="file" accept="video/mp4,.mp4" required>
+<button id="btn" type="submit">Upload & Replace</button>
+<div class="progress"><div class="bar" id="bar"></div></div>
+<div id="msg"></div>
+<small>The TV checks for new content automatically. After upload completes, allow up to about 30 seconds for the TV to switch.</small>
+</form>
+</div>
+<script type="module">
+import { upload } from 'https://esm.sh/@vercel/blob@1.1.1/client';
+
+const form=document.getElementById('form');
+const btn=document.getElementById('btn');
+const bar=document.getElementById('bar');
+const msg=document.getElementById('msg');
+
+form.addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const username=document.getElementById('user').value;
+  const password=document.getElementById('pass').value;
+  const file=document.getElementById('file').files[0];
+  if(!file)return;
+
+  btn.disabled=true; bar.style.width='0%'; msg.className=''; msg.textContent='Preparing upload...';
+  try{
+    const result=await upload('videos/'+Date.now()+'-'+file.name.replace(/[^a-zA-Z0-9._-]/g,'_'),file,{
+      access:'public',
+      handleUploadUrl:'/api/upload',
+      clientPayload:JSON.stringify({username,password}),
+      multipart:true,
+      onUploadProgress:(p)=>{
+        const pct=Math.round(p.percentage||0);
+        bar.style.width=pct+'%';
+        msg.textContent='Uploading... '+pct+'%';
+      }
+    });
+    bar.style.width='100%';
+    msg.className='ok';
+    msg.textContent='Upload complete. The TV will switch to the new video automatically.';
+    document.getElementById('file').value='';
+  }catch(err){
+    msg.className='err';
+    msg.textContent=(err&&err.message)?err.message:'Upload failed';
+  }finally{btn.disabled=false;}
+});
+</script>
+</body>
+</html>
