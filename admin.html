@@ -22,100 +22,59 @@ small{display:block;color:#888;margin-top:18px;line-height:1.5}
 <div class="card">
 <h1>Moood TV Upload</h1>
 <div class="sub">Replace the video shown on the café TV.</div>
-<div style="color:#777;font-size:12px;margin-bottom:8px">Admin page v2</div>
+<div style="color:#777;font-size:12px;margin-bottom:8px">Admin page v3</div>
 <form id="form">
 <label>Password</label><input id="pass" type="password" autocomplete="current-password" required>
 <label>New video (MP4)</label><input id="file" type="file" accept="video/mp4,.mp4" required>
 <button id="btn" type="submit">Upload & Replace</button>
 <div class="progress"><div class="bar" id="bar"></div></div>
 <div id="msg"></div>
-<small>The TV checks for new content automatically. After upload completes, allow up to about 30 seconds for the TV to switch.</small>
+<small>The upload goes directly to Vercel Blob, so large video files do not pass through the web function. The TV checks for new content automatically.</small>
 </form>
 </div>
-<script>
-(function(){
-  var form=document.getElementById('form');
-  var btn=document.getElementById('btn');
-  var bar=document.getElementById('bar');
-  var msg=document.getElementById('msg');
-  var CHUNK=5*1024*1024;
+<script type="module">
+import { uploadPresigned } from 'https://esm.sh/@vercel/blob@2.4.0/client';
 
-  function postJson(url,obj){
-    return fetch(url,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(obj)
-    }).then(async function(r){
-      var data={};
-      try{data=await r.json();}catch(e){}
-      if(!r.ok) throw new Error(data.error||('HTTP '+r.status));
-      return data;
-    });
+const form=document.getElementById('form');
+const btn=document.getElementById('btn');
+const bar=document.getElementById('bar');
+const msg=document.getElementById('msg');
+
+form.addEventListener('submit',async(e)=>{
+  e.preventDefault();
+  const password=document.getElementById('pass').value;
+  const file=document.getElementById('file').files[0];
+  if(!file)return;
+  if(!/\.mp4$/i.test(file.name)){
+    msg.className='err'; msg.textContent='Please select an MP4 file.'; return;
   }
 
-  function toBase64(arrayBuffer){
-    var bytes=new Uint8Array(arrayBuffer), binary='', step=0x8000;
-    for(var i=0;i<bytes.length;i+=step){
-      binary+=String.fromCharCode.apply(null,bytes.subarray(i,Math.min(i+step,bytes.length)));
-    }
-    return btoa(binary);
-  }
+  btn.disabled=true; bar.style.width='0%'; msg.className=''; msg.textContent='Preparing secure upload...';
 
-  form.addEventListener('submit',async function(e){
-    e.preventDefault();
-    var username='admin';
-    var password=document.getElementById('pass').value;
-    var file=document.getElementById('file').files[0];
-    if(!file) return;
-
-    if(!/\.mp4$/i.test(file.name)){
-      msg.className='err'; msg.textContent='Please select an MP4 file.'; return;
-    }
-
-    btn.disabled=true; bar.style.width='0%'; msg.className=''; msg.textContent='Starting upload...';
-
-    try{
-      var session=await postJson('/api/upload-start',{
-        username:username,password:password,filename:file.name,size:file.size
-      });
-
-      var parts=[];
-      var totalParts=Math.ceil(file.size/CHUNK);
-
-      for(var partNo=1; partNo<=totalParts; partNo++){
-        var start=(partNo-1)*CHUNK;
-        var end=Math.min(start+CHUNK,file.size);
-        var buffer=await file.slice(start,end).arrayBuffer();
-        var pct=Math.round(((partNo-1)/totalParts)*100);
+  try{
+    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    await uploadPresigned('videos/'+Date.now()+'-'+safeName,file,{
+      access:'public',
+      handleUploadUrl:'/api/upload-presigned',
+      clientPayload:JSON.stringify({password}),
+      multipart:true,
+      onUploadProgress:(p)=>{
+        const pct=Math.round(p.percentage||0);
         bar.style.width=pct+'%';
         msg.textContent='Uploading... '+pct+'%';
-
-        var part=await postJson('/api/upload-part',{
-          username:username,password:password,
-          pathname:session.pathname,key:session.key,uploadId:session.uploadId,
-          partNumber:partNo,data:toBase64(buffer)
-        });
-        parts.push({etag:part.etag,partNumber:part.partNumber});
       }
-
-      msg.textContent='Finalizing upload...';
-      await postJson('/api/upload-complete',{
-        username:username,password:password,
-        pathname:session.pathname,key:session.key,uploadId:session.uploadId,parts:parts
-      });
-
-      bar.style.width='100%';
-      msg.className='ok';
-      msg.textContent='Upload complete. The TV will switch to the new video automatically.';
-      document.getElementById('file').value='';
-    }catch(err){
-      msg.className='err';
-      msg.textContent=(err&&err.message)?err.message:'Upload failed';
-    }finally{
-      btn.disabled=false;
-    }
-  });
-})();
+    });
+    bar.style.width='100%';
+    msg.className='ok';
+    msg.textContent='Upload complete. The TV will switch to the new video automatically.';
+    document.getElementById('file').value='';
+  }catch(err){
+    msg.className='err';
+    msg.textContent=(err&&err.message)?err.message:'Upload failed';
+  }finally{
+    btn.disabled=false;
+  }
+});
 </script>
 </body>
 </html>
