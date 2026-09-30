@@ -12,7 +12,7 @@ export default async function handler(req,res){
     readJson('state/'+tv+'/settings.json',{orientation:0,fit:'contain'}),
     readJson('state/'+tv+'/emergency.json',{enabled:false}),
     readJson('state/'+tv+'/history.json',[]),
-    listVideos()
+    listVideos(tv)
   ]);
   const lastSeen=heartbeat?.time?new Date(heartbeat.time).getTime():0;
   const online=!!lastSeen && Date.now()-lastSeen<120000;
