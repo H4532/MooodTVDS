@@ -16,37 +16,49 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 </style>
 </head>
 <body>
-<div id="stage"><video id="player" autoplay loop muted playsinline webkit-playsinline preload="auto"></video><div id="status"></div></div>
+<div id="stage"><video id="player" autoplay loop muted playsinline webkit-playsinline preload="auto"></video><img id="image" alt="" style="display:none"><div id="status"></div></div>
 <script>
 (function(){
   var API='https://mooodtvds.vercel.app';
   var qs={}; location.search.replace(/[?&]+([^=&]+)=([^&]*)/gi,function(m,k,v){qs[k]=decodeURIComponent(v)});
   var TV=(qs.tv||'tv1').toLowerCase();
-  var player=document.getElementById('player'), status=document.getElementById('status');
+  var player=document.getElementById('player'), image=document.getElementById('image'), status=document.getElementById('status');
   var currentSrc='',currentVersion='',lastTime=-1,stuckCount=0,errorCount=0,lastGood=Date.now();
   var reloads=0; try{reloads=parseInt(localStorage.getItem('moood_reload_count')||'0',10)||0}catch(e){}
 
   function show(msg,on){status.innerHTML=msg;status.style.display=on?'block':'none'}
   function applyLayout(fit,orientation){
     var o=parseInt(orientation||0,10)%360;
-    player.style.objectFit=(fit==='cover')?'cover':'contain';
-    player.style.left='50%';player.style.top='50%';
-    if(o===90||o===270){
-      player.style.width='100vh';player.style.height='100vw';
-    }else{
-      player.style.width='100vw';player.style.height='100vh';
+    var nodes=[player,image];
+    for(var n=0;n<nodes.length;n++){
+      var el=nodes[n];
+      el.style.objectFit=(fit==='cover')?'cover':'contain';
+      el.style.position='absolute';el.style.left='50%';el.style.top='50%';
+      if(o===90||o===270){el.style.width='100vh';el.style.height='100vw'}
+      else{el.style.width='100vw';el.style.height='100vh'}
+      el.style.transform='translate(-50%,-50%) rotate('+o+'deg)';
     }
-    player.style.transform='translate(-50%,-50%) rotate('+o+'deg)';
   }
   function safePlay(){try{player.muted=true;player.volume=0;var p=player.play();if(p&&p.catch)p.catch(function(){})}catch(e){}}
   function ver(src,v){return src+(src.indexOf('?')>=0?'&':'?')+'v='+encodeURIComponent(v||'1')}
-  function load(src,v){
+  function load(src,v,mediaType){
     if(!src)return;
-    if(src===currentSrc&&v===currentVersion){safePlay();return}
+    if(src===currentSrc&&v===currentVersion){
+      if(mediaType!=='image')safePlay();
+      return;
+    }
     currentSrc=src;currentVersion=v||'1';errorCount=0;
-    try{localStorage.setItem('moood_last_src',src);localStorage.setItem('moood_last_ver',currentVersion)}catch(e){}
-    try{player.pause();player.removeAttribute('src');player.load()}catch(e){}
-    player.src=ver(src,currentVersion);player.load();safePlay();
+    try{localStorage.setItem('moood_last_src',src);localStorage.setItem('moood_last_ver',currentVersion);localStorage.setItem('moood_last_type',mediaType||'video')}catch(e){}
+    if(mediaType==='image'){
+      try{player.pause();player.removeAttribute('src');player.load()}catch(e){}
+      player.style.display='none'; image.style.display='block';
+      image.src=ver(src,currentVersion);
+      lastGood=Date.now();
+    }else{
+      image.style.display='none'; image.removeAttribute('src'); player.style.display='block';
+      try{player.pause();player.removeAttribute('src');player.load()}catch(e){}
+      player.src=ver(src,currentVersion);player.load();safePlay();
+    }
   }
   function config(){
     var x=new XMLHttpRequest();
@@ -54,9 +66,9 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     x.onreadystatechange=function(){
       if(x.readyState===4){
         if(x.status>=200&&x.status<300){
-          try{var c=JSON.parse(x.responseText);applyLayout(c.fit,c.orientation);load(c.video,c.version);show('',false)}catch(e){}
+          try{var c=JSON.parse(x.responseText);applyLayout(c.fit,c.orientation);load(c.video,c.version,c.mediaType||'video');show('',false)}catch(e){}
         }else if(!currentSrc){
-          try{load(localStorage.getItem('moood_last_src'),localStorage.getItem('moood_last_ver'))}catch(e){}
+          try{load(localStorage.getItem('moood_last_src'),localStorage.getItem('moood_last_ver'),localStorage.getItem('moood_last_type')||'video')}catch(e){}
         }
       }
     };
@@ -66,7 +78,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     try{if(currentSrc){player.src=ver(currentSrc,currentVersion)+'&r='+Date.now();player.load();safePlay()}}catch(e){}
   }
   function heartbeat(){
-    var data={tv:TV,state:player.error?'error':(player.paused?'paused':'playing'),currentUrl:currentSrc,currentTime:player.currentTime||0,duration:player.duration||0,reloads:reloads};
+    var isImage=image.style.display!=='none'; var data={tv:TV,state:isImage?'showing-image':(player.error?'error':(player.paused?'paused':'playing')),currentUrl:currentSrc,currentTime:isImage?0:(player.currentTime||0),duration:isImage?0:(player.duration||0),reloads:reloads};
     try{
       var x=new XMLHttpRequest();x.open('POST',API+'/api/heartbeat',true);x.setRequestHeader('Content-Type','application/json');x.send(JSON.stringify(data));
     }catch(e){}
