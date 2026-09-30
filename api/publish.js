@@ -18,6 +18,6 @@ export default async function handler(req,res){
   await writeJson('state/'+tv+'/draft.json',null);
   await appendHistory(tv,{action:'published',url:draft.url,pathname:draft.pathname});
   const keep=[next.current?.url,next.previous?.url].filter(Boolean);
-  await cleanupVideos(keep);
+  await cleanupVideos(tv,keep);
   res.status(200).json(next);
 }
