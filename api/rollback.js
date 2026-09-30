@@ -1,5 +1,5 @@
 import { requireAuth } from '../lib/auth.js';
-import { readJson, writeJson, safeTvId, appendHistory, cleanupVideos } from '../lib/state.js';
+import { readJson, writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
 export default async function handler(req,res){
   if(!requireAuth(req,res)) return;
   if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
@@ -9,6 +9,6 @@ export default async function handler(req,res){
   const next={current:state.previous,previous:state.current,version:String(Date.now()),updatedAt:new Date().toISOString()};
   await writeJson('state/'+tv+'/current.json',next);
   await appendHistory(tv,{action:'rollback',url:next.current.url});
-  await cleanupVideos(tv,[next.current?.url,next.previous?.url].filter(Boolean));
+  await cleanupUnreferencedVideos(tv);
   res.status(200).json(next);
 }
