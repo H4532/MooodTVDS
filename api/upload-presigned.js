@@ -13,8 +13,10 @@ export default async function handler(request,response){
       request,
       webhookPublicKey:process.env.BLOB_WEBHOOK_PUBLIC_KEY,
       getSignedToken:async(pathname,clientPayload)=>{
-        if(!isAuthenticated(request)) throw new Error('Unauthorized');
         let payload={}; try{payload=JSON.parse(clientPayload||'{}')}catch{}
+        const sessionOk=isAuthenticated(request);
+        const passwordOk=payload.password && payload.password===process.env.ADMIN_PASSWORD;
+        if(!sessionOk && !passwordOk) throw new Error('Unauthorized');
         const tv=safeTvId(payload.tv);
         const lower=String(pathname||'').toLowerCase();
         const allowedExt=['.mp4','.jpg','.jpeg','.png','.webp'];
