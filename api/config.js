@@ -20,9 +20,12 @@ export default async function handler(req,res){
   if(active?.video) selected=active.video;
   if(emergency?.enabled && emergency.video?.url) selected=emergency.video;
   const fallback=settings.fallback||'https://h4532.github.io/MooodTVDS/video.mp4';
+  const chosenUrl=selected?.url||fallback;
+  const chosenPath=String(selected?.pathname||chosenUrl||'').toLowerCase().split('?')[0];
+  const isImage=(selected?.contentType||'').startsWith('image/') || /\.(jpg|jpeg|png|webp)$/.test(chosenPath);
   res.status(200).json({
     tv,
-    video:selected?.url||fallback,
+    video:chosenUrl,
     version:selected?.uploadedAt||state.version||String(now),
     loop:true,
     muted:true,
@@ -30,6 +33,6 @@ export default async function handler(req,res){
     fit:settings.fit||'contain',
     orientation:Number(settings.orientation||0),
     source:emergency?.enabled?'emergency':active?'schedule':selected?'current':'fallback',
-    mediaType:(selected?.contentType||'').startsWith('image/')?'image':'video'
+    mediaType:isImage?'image':'video'
   });
 }
