@@ -9,6 +9,6 @@ export default async function handler(req,res){
   const next={current:state.previous,previous:state.current,version:String(Date.now()),updatedAt:new Date().toISOString()};
   await writeJson('state/'+tv+'/current.json',next);
   await appendHistory(tv,{action:'rollback',url:next.current.url});
-  await cleanupVideos([next.current?.url,next.previous?.url].filter(Boolean));
+  await cleanupVideos(tv,[next.current?.url,next.previous?.url].filter(Boolean));
   res.status(200).json(next);
 }
