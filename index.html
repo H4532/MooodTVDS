@@ -43,6 +43,8 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
   function ver(src,v){return src+(src.indexOf('?')>=0?'&':'?')+'v='+encodeURIComponent(v||'1')}
   function load(src,v,mediaType){
     if(!src)return;
+    var clean=String(src).toLowerCase().split('?')[0];
+    if(mediaType!=='image' && /\.(jpg|jpeg|png|webp)$/.test(clean))mediaType='image';
     if(src===currentSrc&&v===currentVersion){
       if(mediaType!=='image')safePlay();
       return;
@@ -75,7 +77,15 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     try{x.send(null)}catch(e){}
   }
   function recover(){
-    try{if(currentSrc){player.src=ver(currentSrc,currentVersion)+'&r='+Date.now();player.load();safePlay()}}catch(e){}
+    try{
+      var isImage=image.style.display!=='none';
+      if(isImage){
+        image.src=ver(currentSrc,currentVersion)+'&r='+Date.now();
+        lastGood=Date.now();
+      }else if(currentSrc){
+        player.src=ver(currentSrc,currentVersion)+'&r='+Date.now();player.load();safePlay();
+      }
+    }catch(e){}
   }
   function heartbeat(){
     var isImage=image.style.display!=='none'; var data={tv:TV,state:isImage?'showing-image':(player.error?'error':(player.paused?'paused':'playing')),currentUrl:currentSrc,currentTime:isImage?0:(player.currentTime||0),duration:isImage?0:(player.duration||0),reloads:reloads};
@@ -84,11 +94,18 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     }catch(e){}
   }
   player.onerror=function(){errorCount++;if(errorCount<=3)setTimeout(recover,3000);else setTimeout(function(){reloads++;try{localStorage.setItem('moood_reload_count',String(reloads))}catch(e){}location.reload(true)},5000)};
+  image.onerror=function(){setTimeout(recover,3000)};
+  image.onload=function(){lastGood=Date.now()};
   player.onended=function(){try{player.currentTime=0}catch(e){}safePlay()};
   player.oncanplay=function(){safePlay()};
   player.ontimeupdate=function(){lastGood=Date.now();errorCount=0};
   setInterval(function(){
     try{
+      var isImage=image.style.display!=='none';
+      if(isImage){
+        lastGood=Date.now();
+        return;
+      }
       var t=player.currentTime||0;
       if(!player.paused&&t===lastTime)stuckCount++;else stuckCount=0;
       lastTime=t;if(player.paused)safePlay();
