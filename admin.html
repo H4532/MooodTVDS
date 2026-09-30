@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="0">
 <title>Moood TV Admin</title>
 <style>
 body{font-family:Arial,sans-serif;background:#111;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
@@ -19,8 +22,8 @@ small{display:block;color:#888;margin-top:18px;line-height:1.5}
 <div class="card">
 <h1>Moood TV Upload</h1>
 <div class="sub">Replace the video shown on the café TV.</div>
+<div style="color:#777;font-size:12px;margin-bottom:8px">Admin page v2</div>
 <form id="form">
-<label>Username</label><input id="user" autocomplete="username" required>
 <label>Password</label><input id="pass" type="password" autocomplete="current-password" required>
 <label>New video (MP4)</label><input id="file" type="file" accept="video/mp4,.mp4" required>
 <button id="btn" type="submit">Upload & Replace</button>
