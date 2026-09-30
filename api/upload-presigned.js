@@ -1,4 +1,4 @@
-import { issueSignedToken } from '@vercel/blob';
+import { issueSignedToken, list, del } from '@vercel/blob';
 import { handleUploadPresigned } from '@vercel/blob/client';
 
 export default async function handler(request, response) {
@@ -47,7 +47,35 @@ export default async function handler(request, response) {
           }
         };
       },
-      onUploadCompleted: async () => {}
+      onUploadCompleted: async ({ blob }) => {
+        try {
+          let cursor;
+          do {
+            const result = await list({
+              prefix: 'videos/',
+              limit: 100,
+              cursor,
+              oidcToken: process.env.VERCEL_OIDC_TOKEN,
+              storeId: process.env.BLOB_STORE_ID
+            });
+
+            const oldUrls = (result.blobs || [])
+              .filter((item) => item.url !== blob.url)
+              .map((item) => item.url);
+
+            if (oldUrls.length) {
+              await del(oldUrls, {
+                oidcToken: process.env.VERCEL_OIDC_TOKEN,
+                storeId: process.env.BLOB_STORE_ID
+              });
+            }
+
+            cursor = result.cursor;
+          } while (cursor);
+        } catch (cleanupError) {
+          console.error('Old video cleanup failed:', cleanupError);
+        }
+      }
     });
 
     response.status(200).json(jsonResponse);
