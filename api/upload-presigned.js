@@ -1,87 +1,62 @@
-import { issueSignedToken, list, del } from '@vercel/blob';
+import { issueSignedToken, del } from '@vercel/blob';
 import { handleUploadPresigned } from '@vercel/blob/client';
+import { isAuthenticated } from '../lib/auth.js';
+import { readJson, writeJson, safeTvId, appendHistory } from '../lib/state.js';
 
-export default async function handler(request, response) {
-  if (request.method !== 'POST') {
-    response.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
+export default async function handler(request,response){
+  if(request.method!=='POST') return response.status(405).json({error:'Method not allowed'});
+  if(!isAuthenticated(request)) return response.status(401).json({error:'Unauthorized'});
 
-  try {
-    const body = request.body;
-
-    const jsonResponse = await handleUploadPresigned({
+  try{
+    const body=request.body;
+    const jsonResponse=await handleUploadPresigned({
       body,
       request,
-      webhookPublicKey: process.env.BLOB_WEBHOOK_PUBLIC_KEY,
-      getSignedToken: async (pathname, clientPayload) => {
-        let payload = {};
-        try { payload = JSON.parse(clientPayload || '{}'); } catch {}
-
-        if (payload.password !== process.env.ADMIN_PASSWORD) {
-          throw new Error('Invalid password');
-        }
-
-        if (!pathname || !pathname.toLowerCase().endsWith('.mp4')) {
-          throw new Error('Only MP4 files are allowed');
-        }
-
-        const token = await issueSignedToken({
+      webhookPublicKey:process.env.BLOB_WEBHOOK_PUBLIC_KEY,
+      getSignedToken:async(pathname,clientPayload)=>{
+        let payload={}; try{payload=JSON.parse(clientPayload||'{}')}catch{}
+        const tv=safeTvId(payload.tv);
+        if(!pathname||!pathname.toLowerCase().endsWith('.mp4')) throw new Error('Only MP4 files are allowed');
+        const token=await issueSignedToken({
           pathname,
-          operations: ['put'],
-          validUntil: Date.now() + 60 * 60 * 1000,
-          allowedContentTypes: ['video/mp4'],
-          maximumSizeInBytes: 500 * 1024 * 1024,
-          oidcToken: process.env.VERCEL_OIDC_TOKEN,
-          storeId: process.env.BLOB_STORE_ID
+          operations:['put'],
+          validUntil:Date.now()+60*60*1000,
+          allowedContentTypes:['video/mp4'],
+          maximumSizeInBytes:500*1024*1024,
+          oidcToken:process.env.VERCEL_OIDC_TOKEN,
+          storeId:process.env.BLOB_STORE_ID
         });
-
         return {
           token,
-          urlOptions: {
-            allowedContentTypes: ['video/mp4'],
-            maximumSizeInBytes: 500 * 1024 * 1024,
-            addRandomSuffix: true,
-            allowOverwrite: false,
-            cacheControlMaxAge: 60
+          tokenPayload:JSON.stringify({tv}),
+          urlOptions:{
+            allowedContentTypes:['video/mp4'],
+            maximumSizeInBytes:500*1024*1024,
+            addRandomSuffix:true,
+            allowOverwrite:false,
+            cacheControlMaxAge:60
           }
         };
       },
-      onUploadCompleted: async ({ blob }) => {
-        try {
-          let cursor;
-          do {
-            const result = await list({
-              prefix: 'videos/',
-              limit: 100,
-              cursor,
-              oidcToken: process.env.VERCEL_OIDC_TOKEN,
-              storeId: process.env.BLOB_STORE_ID
-            });
-
-            const oldUrls = (result.blobs || [])
-              .filter((item) => item.url !== blob.url)
-              .map((item) => item.url);
-
-            if (oldUrls.length) {
-              await del(oldUrls, {
-                oidcToken: process.env.VERCEL_OIDC_TOKEN,
-                storeId: process.env.BLOB_STORE_ID
-              });
-            }
-
-            cursor = result.cursor;
-          } while (cursor);
-        } catch (cleanupError) {
-          console.error('Old video cleanup failed:', cleanupError);
+      onUploadCompleted:async({blob,tokenPayload})=>{
+        let tv='tv1'; try{tv=safeTvId(JSON.parse(tokenPayload||'{}').tv)}catch{}
+        const oldDraft=await readJson('state/'+tv+'/draft.json',null);
+        if(oldDraft?.url && oldDraft.url!==blob.url){
+          try{await del(oldDraft.url,{oidcToken:process.env.VERCEL_OIDC_TOKEN,storeId:process.env.BLOB_STORE_ID})}catch{}
         }
+        const draft={
+          url:blob.url,
+          pathname:blob.pathname,
+          contentType:blob.contentType||'video/mp4',
+          uploadedAt:new Date().toISOString(),
+          size:blob.size||null
+        };
+        await writeJson('state/'+tv+'/draft.json',draft);
+        await appendHistory(tv,{action:'draft_uploaded',url:blob.url,pathname:blob.pathname});
       }
     });
-
     response.status(200).json(jsonResponse);
-  } catch (error) {
-    response.status(400).json({
-      error: error && error.message ? error.message : 'Upload failed'
-    });
+  }catch(error){
+    response.status(400).json({error:error?.message||'Upload failed'});
   }
 }
