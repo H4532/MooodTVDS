@@ -5,7 +5,6 @@ import { writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '.
 
 export default async function handler(request,response){
   if(request.method!=='POST') return response.status(405).json({error:'Method not allowed'});
-  if(!isAuthenticated(request)) return response.status(401).json({error:'Unauthorized'});
 
   try{
     const body=request.body;
@@ -14,6 +13,7 @@ export default async function handler(request,response){
       request,
       webhookPublicKey:process.env.BLOB_WEBHOOK_PUBLIC_KEY,
       getSignedToken:async(pathname,clientPayload)=>{
+        if(!isAuthenticated(request)) throw new Error('Unauthorized');
         let payload={}; try{payload=JSON.parse(clientPayload||'{}')}catch{}
         const tv=safeTvId(payload.tv);
         if(!pathname||!pathname.toLowerCase().endsWith('.mp4')) throw new Error('Only MP4 files are allowed');
