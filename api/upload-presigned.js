@@ -16,12 +16,14 @@ export default async function handler(request,response){
         if(!isAuthenticated(request)) throw new Error('Unauthorized');
         let payload={}; try{payload=JSON.parse(clientPayload||'{}')}catch{}
         const tv=safeTvId(payload.tv);
-        if(!pathname||!pathname.toLowerCase().endsWith('.mp4')) throw new Error('Only MP4 files are allowed');
+        const lower=String(pathname||'').toLowerCase();
+        const allowedExt=['.mp4','.jpg','.jpeg','.png','.webp'];
+        if(!allowedExt.some(ext=>lower.endsWith(ext))) throw new Error('Only MP4, JPG, PNG or WebP files are allowed');
         const token=await issueSignedToken({
           pathname,
           operations:['put'],
           validUntil:Date.now()+60*60*1000,
-          allowedContentTypes:['video/mp4'],
+          allowedContentTypes:['video/mp4','image/jpeg','image/png','image/webp'],
           maximumSizeInBytes:500*1024*1024,
           oidcToken:process.env.VERCEL_OIDC_TOKEN,
           storeId:process.env.BLOB_STORE_ID
@@ -29,7 +31,7 @@ export default async function handler(request,response){
         return {
           token,
           urlOptions:{
-            allowedContentTypes:['video/mp4'],
+            allowedContentTypes:['video/mp4','image/jpeg','image/png','image/webp'],
             maximumSizeInBytes:500*1024*1024,
             addRandomSuffix:true,
             allowOverwrite:false,
@@ -43,7 +45,7 @@ export default async function handler(request,response){
         const draft={
           url:blob.url,
           pathname:blob.pathname,
-          contentType:blob.contentType||'video/mp4',
+          contentType:blob.contentType||'application/octet-stream',
           uploadedAt:new Date().toISOString(),
           size:blob.size||null
         };
