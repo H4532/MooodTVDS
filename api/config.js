@@ -1,37 +1,34 @@
-import { list } from '@vercel/blob';
+import { readJson, safeTvId } from '../lib/state.js';
 
-export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-
-  try {
-    const result = await list({ prefix: 'videos/', limit: 100 });
-    const videos = (result.blobs || [])
-      .filter((b) => (b.pathname || '').toLowerCase().endsWith('.mp4'))
-      .sort((a, b) => new Date(b.uploadedAt || 0) - new Date(a.uploadedAt || 0));
-
-    if (!videos.length) {
-      res.status(200).json({
-        video: 'https://h4532.github.io/MooodTVDS/video.mp4',
-        version: 'fallback',
-        loop: true,
-        muted: true,
-        volume: 0,
-        fit: 'contain'
-      });
-      return;
-    }
-
-    const current = videos[0];
-    res.status(200).json({
-      video: current.url,
-      version: current.uploadedAt || current.etag || Date.now().toString(),
-      loop: true,
-      muted: true,
-      volume: 0,
-      fit: 'contain'
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Unable to read current video' });
-  }
+export default async function handler(req,res){
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate');
+  const tv=safeTvId(req.query?.tv);
+  const [state,schedule,settings,emergency]=await Promise.all([
+    readJson('state/'+tv+'/current.json',{current:null,previous:null,version:'0'}),
+    readJson('state/'+tv+'/schedule.json',[]),
+    readJson('state/'+tv+'/settings.json',{orientation:0,fit:'contain',fallback:'https://h4532.github.io/MooodTVDS/video.mp4'}),
+    readJson('state/'+tv+'/emergency.json',{enabled:false})
+  ]);
+  let selected=state.current;
+  const now=Date.now();
+  const active=(Array.isArray(schedule)?schedule:[]).filter(x=>{
+    const s=x.start?new Date(x.start).getTime():0;
+    const e=x.end?new Date(x.end).getTime():Infinity;
+    return x.enabled!==false && s<=now && now<e && x.video?.url;
+  }).sort((a,b)=>new Date(b.start||0)-new Date(a.start||0))[0];
+  if(active?.video) selected=active.video;
+  if(emergency?.enabled && emergency.video?.url) selected=emergency.video;
+  const fallback=settings.fallback||'https://h4532.github.io/MooodTVDS/video.mp4';
+  res.status(200).json({
+    tv,
+    video:selected?.url||fallback,
+    version:selected?.uploadedAt||state.version||String(now),
+    loop:true,
+    muted:true,
+    volume:0,
+    fit:settings.fit||'contain',
+    orientation:Number(settings.orientation||0),
+    source:emergency?.enabled?'emergency':active?'schedule':selected?'current':'fallback'
+  });
 }
