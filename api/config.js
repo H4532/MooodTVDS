@@ -29,6 +29,7 @@ export default async function handler(req,res){
     volume:0,
     fit:settings.fit||'contain',
     orientation:Number(settings.orientation||0),
-    source:emergency?.enabled?'emergency':active?'schedule':selected?'current':'fallback'
+    source:emergency?.enabled?'emergency':active?'schedule':selected?'current':'fallback',
+    mediaType:(selected?.contentType||'').startsWith('image/')?'image':'video'
   });
 }
