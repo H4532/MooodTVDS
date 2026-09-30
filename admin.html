@@ -160,7 +160,7 @@ $('uploadBtn').onclick=async()=>{
   $('uploadBtn').disabled=true;$('progress').style.width='0%';$('uploadMsg').textContent='Preparing...';
   try{
     const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    const result=await uploadPresigned('videos/'+Date.now()+'-'+safe,f,{
+    const result=await uploadPresigned('videos/'+tv()+'/'+Date.now()+'-'+safe,f,{
       access:'public',handleUploadUrl:'/api/upload-presigned',clientPayload:JSON.stringify({tv:tv()}),multipart:true,
       onUploadProgress:p=>{$('progress').style.width=Math.round(p.percentage||0)+'%';$('uploadMsg').textContent='Uploading '+Math.round(p.percentage||0)+'%'}
     });
