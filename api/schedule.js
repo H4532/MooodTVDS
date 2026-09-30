@@ -1,5 +1,5 @@
 import { requireAuth } from '../lib/auth.js';
-import { readJson, writeJson, safeTvId, appendHistory } from '../lib/state.js';
+import { readJson, writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
 export default async function handler(req,res){
   if(!requireAuth(req,res)) return;
   const tv=safeTvId(req.query?.tv || req.body?.tv);
@@ -8,5 +8,6 @@ export default async function handler(req,res){
   const entries=Array.isArray(req.body?.entries)?req.body.entries.slice(0,50):[];
   await writeJson('state/'+tv+'/schedule.json',entries);
   await appendHistory(tv,{action:'schedule_updated',count:entries.length});
+  await cleanupUnreferencedVideos(tv);
   res.status(200).json(entries);
 }
