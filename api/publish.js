@@ -1,5 +1,5 @@
 import { requireAuth } from '../lib/auth.js';
-import { readJson, writeJson, safeTvId, appendHistory, cleanupVideos } from '../lib/state.js';
+import { readJson, writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
 
 export default async function handler(req,res){
   if(!requireAuth(req,res)) return;
@@ -18,6 +18,6 @@ export default async function handler(req,res){
   await writeJson('state/'+tv+'/draft.json',null);
   await appendHistory(tv,{action:'published',url:draft.url,pathname:draft.pathname});
   const keep=[next.current?.url,next.previous?.url].filter(Boolean);
-  await cleanupVideos(tv,keep);
+  await cleanupUnreferencedVideos(tv);
   res.status(200).json(next);
 }
