@@ -1,79 +1,64 @@
-import { issueSignedToken } from '@vercel/blob';
-import { handleUploadPresigned } from '@vercel/blob/client';
+import { issueSignedToken, presignUrl } from '@vercel/blob';
 import { isAuthenticated } from '../lib/auth.js';
-import { readJson, writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
+import { safeTvId, readJson, writeJson } from '../lib/state.js';
 
-export default async function handler(request,response){
-  if(request.method!=='POST') return response.status(405).json({error:'Method not allowed'});
+export default async function handler(req,res){
+  if(req.method!=='POST') return res.status(405).json({error:'Method not allowed'});
+
+  const body=req.body||{};
+  const sessionOk=isAuthenticated(req);
+  const passwordOk=body.password && body.password===process.env.ADMIN_PASSWORD;
+  if(!sessionOk && !passwordOk) return res.status(401).json({error:'Unauthorized'});
 
   try{
-    const body=request.body;
-    const jsonResponse=await handleUploadPresigned({
-      body,
-      request,
-      webhookPublicKey:process.env.BLOB_WEBHOOK_PUBLIC_KEY,
-      getSignedToken:async(pathname,clientPayload)=>{
-        let payload={}; try{payload=JSON.parse(clientPayload||'{}')}catch{}
-        const sessionOk=isAuthenticated(request);
-        const passwordOk=payload.password && payload.password===process.env.ADMIN_PASSWORD;
-        if(!sessionOk && !passwordOk) throw new Error('Unauthorized');
-        const tv=safeTvId(payload.tv);
-        const lower=String(pathname||'').toLowerCase();
-        const allowedExt=['.mp4','.jpg','.jpeg','.png','.webp'];
-        if(!allowedExt.some(ext=>lower.endsWith(ext))) throw new Error('Only MP4, JPG, PNG or WebP files are allowed');
-        const token=await issueSignedToken({
-          pathname,
-          operations:['put'],
-          validUntil:Date.now()+60*60*1000,
-          allowedContentTypes:['video/mp4','image/jpeg','image/png','image/webp'],
-          maximumSizeInBytes:500*1024*1024,
-          oidcToken:process.env.VERCEL_OIDC_TOKEN,
-          storeId:process.env.BLOB_STORE_ID
-        });
-        return {
-          token,
-          urlOptions:{
-            allowedContentTypes:['video/mp4','image/jpeg','image/png','image/webp'],
-            maximumSizeInBytes:500*1024*1024,
-            addRandomSuffix:true,
-            allowOverwrite:false,
-            cacheControlMaxAge:60
-          }
-        };
-      },
-      onUploadCompleted:async({blob})=>{
-        const parts=String(blob.pathname||'').split('/');
-        const tv=safeTvId(parts.length>1?parts[1]:'tv1');
-        const media={
-          url:blob.url,
-          pathname:blob.pathname,
-          contentType:blob.contentType||'application/octet-stream',
-          uploadedAt:new Date().toISOString(),
-          size:blob.size||null
-        };
+    const tv=safeTvId(body.tv);
+    const filename=String(body.filename||'media.bin').replace(/[^a-zA-Z0-9._-]/g,'_');
+    const contentType=String(body.contentType||'application/octet-stream');
+    const size=Number(body.size||0);
+    const lower=filename.toLowerCase();
+    const allowedExt=['.mp4','.jpg','.jpeg','.png','.webp'];
+    const allowedTypes=['video/mp4','image/jpeg','image/png','image/webp'];
 
-        // Register this TV permanently.
-        const registry=await readJson('state/registry.json',['tv1','tv2']);
-        const tvs=[...new Set([...(Array.isArray(registry)?registry:[]),'tv1','tv2',tv])];
-        await writeJson('state/registry.json',tvs);
+    if(!allowedExt.some(ext=>lower.endsWith(ext))) {
+      return res.status(400).json({error:'Only MP4, JPG, PNG or WebP files are allowed'});
+    }
+    if(!allowedTypes.includes(contentType)){
+      return res.status(400).json({error:'Unsupported media type'});
+    }
+    if(size<=0 || size>500*1024*1024){
+      return res.status(400).json({error:'File must be between 1 byte and 500 MB'});
+    }
 
-        // Publish immediately when the Blob upload callback completes.
-        // This avoids the race where the browser finishes before draft.json exists.
-        const oldState=await readJson('state/'+tv+'/current.json',{current:null,previous:null});
-        const nextState={
-          current:media,
-          previous:oldState.current||oldState.previous||null,
-          version:String(Date.now()),
-          updatedAt:new Date().toISOString()
-        };
-        await writeJson('state/'+tv+'/current.json',nextState);
-        await writeJson('state/'+tv+'/draft.json',null);
-        await appendHistory(tv,{action:'uploaded_and_published',url:blob.url,pathname:blob.pathname});
-        await cleanupUnreferencedVideos(tv);
-      }
+    const pathname='videos/'+tv+'/'+Date.now()+'-'+filename;
+    const signedToken=await issueSignedToken({
+      pathname,
+      operations:['put'],
+      validUntil:Date.now()+60*60*1000,
+      allowedContentTypes:[contentType],
+      maximumSizeInBytes:500*1024*1024,
+      oidcToken:process.env.VERCEL_OIDC_TOKEN,
+      storeId:process.env.BLOB_STORE_ID
     });
-    response.status(200).json(jsonResponse);
+
+    const signed=await presignUrl(signedToken,{
+      operation:'put',
+      pathname,
+      access:'public',
+      allowedContentTypes:[contentType],
+      maximumSizeInBytes:500*1024*1024,
+      addRandomSuffix:false,
+      allowOverwrite:false,
+      cacheControlMaxAge:60
+    });
+
+    // Keep TV registry persistent.
+    const registry=await readJson('state/registry.json',['tv1','tv2']);
+    const tvs=[...new Set(['tv1','tv2',...(Array.isArray(registry)?registry:[]),tv])];
+    await writeJson('state/registry.json',tvs);
+
+    res.setHeader('Cache-Control','no-store');
+    res.status(200).json({presignedUrl:signed.presignedUrl,pathname,tv,contentType});
   }catch(error){
-    response.status(400).json({error:error?.message||'Upload failed'});
+    res.status(400).json({error:error?.message||'Unable to create upload URL'});
   }
 }
