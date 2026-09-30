@@ -137,7 +137,6 @@ label{display:block;color:#ddd;margin:9px 0 6px}.pill{font-size:12px;padding:4px
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module">
-import { uploadPresigned } from 'https://esm.sh/@vercel/blob@2.4.0/client';
 
 const $=id=>document.getElementById(id);
 let selectedTv='tv1', tvs=['tv1'], state=null, draft=null, qr=null, currentPassword='';
@@ -149,6 +148,18 @@ async function api(url,opt={}){
   if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
   return j;
 }
+function uploadWithProgress(url,file,onProgress){
+  return new Promise((resolve,reject)=>{
+    const xhr=new XMLHttpRequest();
+    xhr.open('PUT',url,true);
+    xhr.setRequestHeader('Content-Type',file.type||'application/octet-stream');
+    xhr.upload.onprogress=(e)=>{if(e.lengthComputable&&onProgress)onProgress(Math.round((e.loaded/e.total)*100));};
+    xhr.onload=()=>{if(xhr.status>=200&&xhr.status<300)resolve(xhr.responseText);else reject(new Error('Blob upload failed: HTTP '+xhr.status));};
+    xhr.onerror=()=>reject(new Error('Blob upload network error'));
+    xhr.send(file);
+  });
+}
+
 function showLogin(){$('loginScreen').classList.remove('hidden');$('app').classList.add('hidden')}
 function showApp(){$('loginScreen').classList.add('hidden');$('app').classList.remove('hidden')}
 function fmt(v){if(!v)return '—';try{return new Date(v).toLocaleString()}catch{return v}}
@@ -259,24 +270,44 @@ $('uploadBtn').onclick=async()=>{
   $('uploadBtn').disabled=true;$('progress').style.width='0%';$('uploadMsg').textContent='Preparing upload...';
   try{
     const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    await uploadPresigned('videos/'+selectedTv+'/'+Date.now()+'-'+safe,f,{
-      access:'public',handleUploadUrl:'/api/upload-presigned',clientPayload:JSON.stringify({tv:selectedTv,password:currentPassword}),multipart:true,
-      onUploadProgress:p=>{$('progress').style.width=Math.round(p.percentage||0)+'%';$('uploadMsg').textContent='Uploading '+Math.round(p.percentage||0)+'%'}
+    const ticket=await api('/api/upload-presigned',{
+      method:'POST',
+      body:JSON.stringify({
+        tv:selectedTv,
+        filename:safe,
+        contentType:f.type||(/\.mp4$/i.test(safe)?'video/mp4':'image/jpeg'),
+        size:f.size,
+        password:currentPassword
+      })
     });
-    $('progress').style.width='100%';$('uploadMsg').className='ok';$('uploadMsg').textContent='Upload complete. Waiting for '+selectedTv+' to publish...';
-    var published=false;
-    for(var wait=0;wait<10;wait++){
-      await new Promise(r=>setTimeout(r,1200));
-      await refreshAll();
-      if(state?.current?.current?.url){
-        published=true;
-        setPreview(state.current.current,'Current live media');
-        break;
-      }
-    }
-    $('uploadMsg').className=published?'ok':'bad';
-    $('uploadMsg').textContent=published?('Uploaded and published to '+selectedTv+'.'):('Upload completed, but publishing confirmation is delayed. Press Refresh in a few seconds.');
-  }catch(e){$('uploadMsg').className='bad';$('uploadMsg').textContent=e.message}finally{$('uploadBtn').disabled=false}
+
+    await uploadWithProgress(ticket.presignedUrl,f,(pct)=>{
+      $('progress').style.width=pct+'%';
+      $('uploadMsg').textContent='Uploading '+pct+'%';
+    });
+
+    $('progress').style.width='100%';
+    $('uploadMsg').textContent='Upload finished. Publishing...';
+
+    await api('/api/publish',{
+      method:'POST',
+      body:JSON.stringify({
+        tv:selectedTv,
+        pathname:ticket.pathname,
+        contentType:ticket.contentType
+      })
+    });
+
+    await refreshAll();
+    setPreview(state?.current?.current,'Current live media');
+    $('uploadMsg').className='ok';
+    $('uploadMsg').textContent='Uploaded and published to '+selectedTv+'.';
+  }catch(e){
+    $('uploadMsg').className='bad';
+    $('uploadMsg').textContent=e.message;
+  }finally{
+    $('uploadBtn').disabled=false;
+  }
 };
 $('showCurrentBtn').onclick=()=>setPreview(state?.current?.current,'Current live video');
 $('showDraftBtn').onclick=()=>setPreview(state?.draft,'Draft preview');
