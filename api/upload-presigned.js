@@ -1,7 +1,7 @@
 import { issueSignedToken } from '@vercel/blob';
 import { handleUploadPresigned } from '@vercel/blob/client';
 import { isAuthenticated } from '../lib/auth.js';
-import { writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
+import { readJson, writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
 
 export default async function handler(request,response){
   if(request.method!=='POST') return response.status(405).json({error:'Method not allowed'});
@@ -42,15 +42,31 @@ export default async function handler(request,response){
       onUploadCompleted:async({blob})=>{
         const parts=String(blob.pathname||'').split('/');
         const tv=safeTvId(parts.length>1?parts[1]:'tv1');
-        const draft={
+        const media={
           url:blob.url,
           pathname:blob.pathname,
           contentType:blob.contentType||'application/octet-stream',
           uploadedAt:new Date().toISOString(),
           size:blob.size||null
         };
-        await writeJson('state/'+tv+'/draft.json',draft);
-        await appendHistory(tv,{action:'draft_uploaded',url:blob.url,pathname:blob.pathname});
+
+        // Register this TV permanently.
+        const registry=await readJson('state/registry.json',['tv1','tv2']);
+        const tvs=[...new Set([...(Array.isArray(registry)?registry:[]),'tv1','tv2',tv])];
+        await writeJson('state/registry.json',tvs);
+
+        // Publish immediately when the Blob upload callback completes.
+        // This avoids the race where the browser finishes before draft.json exists.
+        const oldState=await readJson('state/'+tv+'/current.json',{current:null,previous:null});
+        const nextState={
+          current:media,
+          previous:oldState.current||oldState.previous||null,
+          version:String(Date.now()),
+          updatedAt:new Date().toISOString()
+        };
+        await writeJson('state/'+tv+'/current.json',nextState);
+        await writeJson('state/'+tv+'/draft.json',null);
+        await appendHistory(tv,{action:'uploaded_and_published',url:blob.url,pathname:blob.pathname});
         await cleanupUnreferencedVideos(tv);
       }
     });
