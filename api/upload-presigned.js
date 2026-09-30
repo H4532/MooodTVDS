@@ -28,7 +28,6 @@ export default async function handler(request,response){
         });
         return {
           token,
-          tokenPayload:JSON.stringify({tv}),
           urlOptions:{
             allowedContentTypes:['video/mp4'],
             maximumSizeInBytes:500*1024*1024,
@@ -38,8 +37,9 @@ export default async function handler(request,response){
           }
         };
       },
-      onUploadCompleted:async({blob,tokenPayload})=>{
-        let tv='tv1'; try{tv=safeTvId(JSON.parse(tokenPayload||'{}').tv)}catch{}
+      onUploadCompleted:async({blob})=>{
+        const parts=String(blob.pathname||'').split('/');
+        const tv=safeTvId(parts.length>1?parts[1]:'tv1');
         const oldDraft=await readJson('state/'+tv+'/draft.json',null);
         if(oldDraft?.url && oldDraft.url!==blob.url){
           try{await del(oldDraft.url,{oidcToken:process.env.VERCEL_OIDC_TOKEN,storeId:process.env.BLOB_STORE_ID})}catch{}
