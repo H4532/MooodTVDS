@@ -35,7 +35,7 @@ small{display:block;color:#888;margin-top:18px;line-height:1.5}
   var btn=document.getElementById('btn');
   var bar=document.getElementById('bar');
   var msg=document.getElementById('msg');
-  var CHUNK=2*1024*1024;
+  var CHUNK=5*1024*1024;
 
   function postJson(url,obj){
     return fetch(url,{
@@ -60,7 +60,7 @@ small{display:block;color:#888;margin-top:18px;line-height:1.5}
 
   form.addEventListener('submit',async function(e){
     e.preventDefault();
-    var username=document.getElementById('user').value;
+    var username='admin';
     var password=document.getElementById('pass').value;
     var file=document.getElementById('file').files[0];
     if(!file) return;
