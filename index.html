@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="pragma" content="no-cache">
+<meta http-equiv="expires" content="0">
 <title>Moood TV Digital Signage</title>
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
@@ -14,7 +17,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 </head>
 <body>
 <div id="stage">
-  <video id="player" autoplay loop playsinline webkit-playsinline preload="auto"></video>
+  <video id="player" autoplay loop muted playsinline webkit-playsinline preload="auto"></video>
   <div id="status"></div>
 </div>
 <script>
@@ -22,11 +25,11 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
   var player=document.getElementById('player');
   var status=document.getElementById('status');
   var currentSrc='';
-  var currentCfg=null;
-  var pollTimer=null;
-  var watchdogTimer=null;
+  var currentVersion='';
   var lastTime=-1;
   var stuckCount=0;
+  var errorCount=0;
+  var lastGoodPlayback=(new Date()).getTime();
 
   function showStatus(msg,always){
     status.innerHTML=msg;
@@ -37,42 +40,41 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     fit=(fit||'contain').toLowerCase();
     if(player.style.objectFit!==undefined){
       player.style.objectFit=(fit==='cover')?'cover':'contain';
-    }else{
-      player.style.width='100%';
-      player.style.height='100%';
     }
   }
 
   function safePlay(){
     try{
+      player.muted=true;
       var p=player.play();
-      if(p && typeof p.catch==='function'){
-        p.catch(function(){});
-      }
+      if(p && typeof p.catch==='function'){p.catch(function(){});}
     }catch(e){}
   }
 
-  function loadVideo(src){
+  function withVersion(src,ver){
+    if(!src){return '';}
+    return src + (src.indexOf('?')>=0?'&':'?') + 'v=' + encodeURIComponent(ver||'1');
+  }
+
+  function loadVideo(src,ver){
     if(!src){showStatus('No video configured',true);return;}
-    if(src===currentSrc){safePlay();return;}
+    if(src===currentSrc && ver===currentVersion){safePlay();return;}
     currentSrc=src;
-    try{
-      player.pause();
-      player.removeAttribute('src');
-      player.load();
-    }catch(e){}
-    player.src=src;
+    currentVersion=ver||'1';
+    errorCount=0;
+    try{player.pause();player.removeAttribute('src');player.load();}catch(e){}
+    player.src=withVersion(src,currentVersion);
     player.load();
     safePlay();
   }
 
   function applyConfig(cfg){
-    currentCfg=cfg||{};
-    player.loop = cfg.loop!==false;
-    player.muted = cfg.muted!==false;
-    player.volume = (typeof cfg.volume==='number') ? Math.max(0,Math.min(1,cfg.volume)) : 1;
+    cfg=cfg||{};
+    player.loop=cfg.loop!==false;
+    player.muted=true;
+    player.volume=0;
     applyFit(cfg.fit||'contain');
-    loadVideo(cfg.video||'');
+    loadVideo(cfg.video||'',cfg.version||'1');
     showStatus('',false);
   }
 
@@ -80,19 +82,31 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     var xhr=new XMLHttpRequest();
     xhr.open('GET','config.json?t='+(new Date().getTime()),true);
     xhr.onreadystatechange=function(){
-      if(xhr.readyState===4){
-        if(xhr.status>=200 && xhr.status<300){
-          try{ applyConfig(JSON.parse(xhr.responseText)); }
-          catch(e){ showStatus('Config error',true); }
-        }
+      if(xhr.readyState===4 && xhr.status>=200 && xhr.status<300){
+        try{applyConfig(JSON.parse(xhr.responseText));}
+        catch(e){showStatus('Config error',true);}
       }
     };
     try{xhr.send(null);}catch(e){}
   }
 
+  function hardRecover(){
+    try{
+      if(currentSrc){
+        player.src=withVersion(currentSrc,currentVersion)+'&r='+(new Date().getTime());
+        player.load();
+        safePlay();
+      }
+    }catch(e){}
+  }
+
   player.onerror=function(){
-    showStatus('Retrying video...',false);
-    setTimeout(function(){ if(currentSrc){ player.src=currentSrc+'?r='+(new Date().getTime()); player.load(); safePlay(); } },4000);
+    errorCount++;
+    if(errorCount<=3){
+      setTimeout(hardRecover,3000);
+    }else{
+      setTimeout(function(){window.location.reload(true);},5000);
+    }
   };
 
   player.onended=function(){
@@ -100,24 +114,35 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
     safePlay();
   };
 
-  player.oncanplay=function(){ safePlay(); };
+  player.oncanplay=function(){safePlay();};
 
-  watchdogTimer=setInterval(function(){
+  player.ontimeupdate=function(){
+    lastGoodPlayback=(new Date()).getTime();
+    errorCount=0;
+  };
+
+  setInterval(function(){
     try{
       var t=player.currentTime||0;
-      if(!player.paused && t===lastTime){ stuckCount++; } else { stuckCount=0; }
+      if(!player.paused && t===lastTime){stuckCount++;}else{stuckCount=0;}
       lastTime=t;
-      if(player.paused){ safePlay(); }
-      if(stuckCount>=3 && currentSrc){
+      if(player.paused){safePlay();}
+      if(stuckCount>=3){
         stuckCount=0;
-        player.load();
-        safePlay();
+        hardRecover();
+      }
+      if((new Date()).getTime()-lastGoodPlayback>90000){
+        window.location.reload(true);
       }
     }catch(e){}
   },5000);
 
+  setInterval(fetchConfig,30000);
+
+  // Full page refresh every 6 hours as a final recovery fallback for old TV browsers.
+  setInterval(function(){window.location.reload(true);},21600000);
+
   fetchConfig();
-  pollTimer=setInterval(fetchConfig,30000);
 })();
 </script>
 </body>
