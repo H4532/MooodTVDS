@@ -4,77 +4,179 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="pragma" content="no-cache">
-<meta http-equiv="expires" content="0">
 <title>Moood TV Admin</title>
 <style>
-body{font-family:Arial,sans-serif;background:#111;color:#fff;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
-.card{width:min(520px,92vw);background:#1c1c1c;border-radius:16px;padding:28px;box-sizing:border-box;box-shadow:0 10px 40px rgba(0,0,0,.45)}
-h1{margin:0 0 8px;font-size:28px}.sub{color:#bbb;margin-bottom:24px}
-label{display:block;margin:14px 0 6px;color:#ddd}input{width:100%;box-sizing:border-box;padding:13px;border-radius:9px;border:1px solid #444;background:#0d0d0d;color:#fff;font-size:16px}
-button{width:100%;margin-top:18px;padding:14px;border:0;border-radius:9px;font-size:17px;font-weight:700;cursor:pointer}
-button:disabled{opacity:.55;cursor:not-allowed}.progress{height:10px;background:#333;border-radius:6px;margin-top:18px;overflow:hidden}.bar{height:100%;width:0;background:#fff;transition:width .2s}
-#msg{margin-top:14px;min-height:22px;color:#ddd}.ok{color:#86efac!important}.err{color:#fca5a5!important}
-small{display:block;color:#888;margin-top:18px;line-height:1.5}
+:root{font-family:Arial,sans-serif;color:#fff;background:#0f0f0f}
+*{box-sizing:border-box}body{margin:0;padding:18px}.wrap{max-width:1050px;margin:auto}
+.card{background:#1b1b1b;border:1px solid #2e2e2e;border-radius:14px;padding:18px;margin-bottom:16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+h1,h2,h3{margin:0 0 10px}.muted{color:#aaa}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+input,select,button{font:inherit;border-radius:8px;border:1px solid #444;padding:10px;background:#0d0d0d;color:#fff}
+input,select{width:100%}button{cursor:pointer;background:#f2f2f2;color:#111;font-weight:700}button.dark{background:#292929;color:#fff}.danger{background:#7f1d1d;color:#fff}.warn{background:#92400e;color:#fff}.ok{color:#86efac}.bad{color:#fca5a5}
+.hidden{display:none!important}.stat{font-size:26px;font-weight:700}.small{font-size:12px;color:#999}.bar{height:10px;background:#333;border-radius:6px;overflow:hidden}.bar>div{height:100%;width:0;background:#fff}
+video{width:100%;max-height:360px;background:#000;border-radius:10px}.hist{max-height:260px;overflow:auto}.hist div{padding:8px 0;border-bottom:1px solid #333}.qr{background:white;padding:8px;border-radius:8px;display:inline-block}
+label{display:block;margin-bottom:6px;color:#ddd}.section-title{display:flex;justify-content:space-between;gap:8px;align-items:center}
 </style>
 </head>
 <body>
-<div class="card">
-<h1>Moood TV Upload</h1>
-<div class="sub">Replace the video shown on the café TV.</div>
-<div style="color:#777;font-size:12px;margin-bottom:8px">Admin page v3</div>
-<form id="form">
-<label>Password</label><input id="pass" type="password" autocomplete="current-password" required>
-<label>New video (MP4)</label><input id="file" type="file" accept="video/mp4,.mp4" required>
-<button id="btn" type="submit">Upload & Replace</button>
-<div class="progress"><div class="bar" id="bar"></div></div>
-<div id="msg"></div>
-<small>The upload goes directly to Vercel Blob, so large video files do not pass through the web function. The TV checks for new content automatically.</small>
-</form>
+<div class="wrap">
+<div id="loginCard" class="card">
+  <h1>Moood TV Admin</h1>
+  <p class="muted">Enter the admin password.</p>
+  <label>Password</label><input id="loginPass" type="password">
+  <button id="loginBtn" style="margin-top:12px;width:100%">Login</button>
+  <div id="loginMsg" class="bad" style="margin-top:10px"></div>
 </div>
+
+<div id="app" class="hidden">
+  <div class="card">
+    <div class="section-title"><div><h1>Moood TV Digital Signage</h1><div class="muted">Dashboard & content management</div></div><button id="logoutBtn" class="dark">Logout</button></div>
+    <div class="row" style="margin-top:14px">
+      <div style="flex:1;min-width:180px"><label>TV ID</label><input id="tvId" value="tv1"></div>
+      <div style="align-self:end"><button id="refreshBtn">Refresh</button></div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card"><div class="muted">TV Status</div><div id="online" class="stat">—</div><div id="lastSeen" class="small"></div></div>
+    <div class="card"><div class="muted">Playback</div><div id="playback" class="stat">—</div><div id="playbackDetail" class="small"></div></div>
+    <div class="card"><div class="muted">Current Video</div><div id="currentName" style="font-weight:700;word-break:break-all">—</div><div id="currentMeta" class="small"></div></div>
+    <div class="card"><div class="muted">Last Upload</div><div id="lastUpload" style="font-weight:700">—</div><div id="draftState" class="small"></div></div>
+  </div>
+
+  <div class="card">
+    <h2>Upload & Preview</h2>
+    <div class="grid">
+      <div>
+        <label>New video (MP4)</label><input id="file" type="file" accept="video/mp4,.mp4">
+        <div id="validation" class="small" style="margin-top:8px"></div>
+        <button id="uploadBtn" style="margin-top:12px;width:100%">Upload Draft</button>
+        <div class="bar" style="margin-top:12px"><div id="progress"></div></div>
+        <div id="uploadMsg" style="margin-top:10px"></div>
+      </div>
+      <div>
+        <video id="preview" controls muted></video>
+        <div class="row" style="margin-top:10px">
+          <button id="publishBtn">Publish to TV</button>
+          <button id="emergencyBtn" class="warn">Use Draft as Emergency</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Controls</h2>
+    <div class="row">
+      <button id="rollbackBtn">Restore Previous Video</button>
+      <button id="clearEmergencyBtn" class="dark">Clear Emergency Override</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Schedule Draft</h2>
+    <div class="grid">
+      <div><label>Start</label><input id="schedStart" type="datetime-local"></div>
+      <div><label>End</label><input id="schedEnd" type="datetime-local"></div>
+    </div>
+    <div class="row" style="margin-top:12px"><button id="addScheduleBtn">Add Draft to Schedule</button><button id="clearScheduleBtn" class="dark">Clear Schedule</button></div>
+    <div id="scheduleList" class="small" style="margin-top:12px"></div>
+  </div>
+
+  <div class="card">
+    <h2>TV Settings</h2>
+    <div class="grid">
+      <div><label>Rotation</label><select id="orientation"><option value="0">0°</option><option value="90">90° clockwise</option><option value="180">180°</option><option value="270">270° clockwise</option></select></div>
+      <div><label>Fit</label><select id="fit"><option value="contain">Contain</option><option value="cover">Cover</option></select></div>
+      <div><label>Fallback video URL</label><input id="fallback" value="https://h4532.github.io/MooodTVDS/video.mp4"></div>
+    </div>
+    <button id="saveSettingsBtn" style="margin-top:12px">Save Settings</button>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>TV Link / QR</h2>
+      <div id="tvUrl" style="word-break:break-all"></div>
+      <div id="qrcode" class="qr" style="margin-top:12px"></div>
+    </div>
+    <div class="card">
+      <h2>Upload History</h2>
+      <div id="history" class="hist small"></div>
+    </div>
+  </div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { uploadPresigned } from 'https://esm.sh/@vercel/blob@2.4.0/client';
 
-const form=document.getElementById('form');
-const btn=document.getElementById('btn');
-const bar=document.getElementById('bar');
-const msg=document.getElementById('msg');
+const $=id=>document.getElementById(id);
+let state=null,draft=null,qr=null;
+const api=async(url,opt={})=>{
+  const r=await fetch(url,{credentials:'include',headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt});
+  const j=await r.json().catch(()=>({}));
+  if(r.status===401){showLogin();throw new Error('Session expired');}
+  if(!r.ok)throw new Error(j.error||('HTTP '+r.status)); return j;
+};
+const tv=()=>($('tvId').value||'tv1').toLowerCase().replace(/[^a-z0-9_-]/g,'')||'tv1';
+function showLogin(){$('loginCard').classList.remove('hidden');$('app').classList.add('hidden')}
+function showApp(){$('loginCard').classList.add('hidden');$('app').classList.remove('hidden')}
+function fmt(d){if(!d)return '—';try{return new Date(d).toLocaleString()}catch{return d}}
+function nameFrom(o){return o?.pathname?o.pathname.split('/').pop():'—'}
+function render(){
+  if(!state)return;
+  $('online').textContent=state.online?'ONLINE':'OFFLINE'; $('online').className='stat '+(state.online?'ok':'bad');
+  $('lastSeen').textContent=state.heartbeat?.time?'Last seen '+fmt(state.heartbeat.time):'No heartbeat yet';
+  $('playback').textContent=(state.heartbeat?.state||'unknown').toUpperCase();
+  $('playbackDetail').textContent=state.heartbeat?('Time '+Math.round(state.heartbeat.currentTime||0)+'s / '+Math.round(state.heartbeat.duration||0)+'s · Reloads '+(state.heartbeat.reloads||0)):'';
+  $('currentName').textContent=nameFrom(state.current?.current);
+  $('currentMeta').textContent=state.current?.current?('Published '+fmt(state.current.current.uploadedAt)):'Using fallback until first publish';
+  draft=state.draft;
+  $('lastUpload').textContent=nameFrom(draft);
+  $('draftState').textContent=draft?'Draft ready to preview/publish':'No draft';
+  if(draft?.url){$('preview').src=draft.url}else{$('preview').removeAttribute('src');$('preview').load()}
+  $('orientation').value=String(state.settings?.orientation||0);$('fit').value=state.settings?.fit||'contain';$('fallback').value=state.settings?.fallback||'https://h4532.github.io/MooodTVDS/video.mp4';
+  $('scheduleList').innerHTML=(state.schedule||[]).map((x,i)=>'#'+(i+1)+' '+fmt(x.start)+' → '+fmt(x.end)+' · '+nameFrom(x.video)).join('<br>')||'No scheduled items.';
+  $('history').innerHTML=(state.history||[]).slice(0,25).map(h=>'<div><b>'+h.action+'</b><br>'+fmt(h.time)+(h.pathname?'<br>'+h.pathname:'')+'</div>').join('')||'No history yet.';
+  const u='https://h4532.github.io/MooodTVDS/?tv='+encodeURIComponent(tv());$('tvUrl').textContent=u;
+  $('qrcode').innerHTML='';qr=new QRCode($('qrcode'),{text:u,width:150,height:150});
+}
+async function refresh(){state=await api('/api/status?tv='+encodeURIComponent(tv()));render()}
+$('loginBtn').onclick=async()=>{try{await api('/api/login',{method:'POST',body:JSON.stringify({password:$('loginPass').value})});$('loginMsg').textContent='';showApp();await refresh()}catch(e){$('loginMsg').textContent=e.message}};
+$('logoutBtn').onclick=async()=>{await fetch('/api/logout',{method:'POST',credentials:'include'});showLogin()};
+$('refreshBtn').onclick=refresh;$('tvId').onchange=refresh;
 
-form.addEventListener('submit',async(e)=>{
-  e.preventDefault();
-  const password=document.getElementById('pass').value;
-  const file=document.getElementById('file').files[0];
-  if(!file)return;
-  if(!/\.mp4$/i.test(file.name)){
-    msg.className='err'; msg.textContent='Please select an MP4 file.'; return;
-  }
+$('file').onchange=async()=>{
+  const f=$('file').files[0]; if(!f)return;
+  if(!/\.mp4$/i.test(f.name)){ $('validation').textContent='Only MP4 is accepted.'; return;}
+  const url=URL.createObjectURL(f),v=document.createElement('video');
+  v.preload='metadata';v.src=url;v.onloadedmetadata=()=>{
+    $('validation').textContent=f.name+' · '+(f.size/1024/1024).toFixed(1)+' MB · '+v.videoWidth+'×'+v.videoHeight+' · '+Math.round(v.duration)+'s. Audio is ignored on the TV because playback is forced muted.';
+    URL.revokeObjectURL(url);
+  };
+};
 
-  btn.disabled=true; bar.style.width='0%'; msg.className=''; msg.textContent='Preparing secure upload...';
-
+$('uploadBtn').onclick=async()=>{
+  const f=$('file').files[0];if(!f)return alert('Choose an MP4 first');
+  $('uploadBtn').disabled=true;$('progress').style.width='0%';$('uploadMsg').textContent='Preparing...';
   try{
-    const safeName=file.name.replace(/[^a-zA-Z0-9._-]/g,'_');
-    await uploadPresigned('videos/'+Date.now()+'-'+safeName,file,{
-      access:'public',
-      handleUploadUrl:'/api/upload-presigned',
-      clientPayload:JSON.stringify({password}),
-      multipart:true,
-      onUploadProgress:(p)=>{
-        const pct=Math.round(p.percentage||0);
-        bar.style.width=pct+'%';
-        msg.textContent='Uploading... '+pct+'%';
-      }
+    const safe=f.name.replace(/[^a-zA-Z0-9._-]/g,'_');
+    const result=await uploadPresigned('videos/'+Date.now()+'-'+safe,f,{
+      access:'public',handleUploadUrl:'/api/upload-presigned',clientPayload:JSON.stringify({tv:tv()}),multipart:true,
+      onUploadProgress:p=>{$('progress').style.width=Math.round(p.percentage||0)+'%';$('uploadMsg').textContent='Uploading '+Math.round(p.percentage||0)+'%'}
     });
-    bar.style.width='100%';
-    msg.className='ok';
-    msg.textContent='Upload complete. The TV will switch to the new video automatically.';
-    document.getElementById('file').value='';
-  }catch(err){
-    msg.className='err';
-    msg.textContent=(err&&err.message)?err.message:'Upload failed';
-  }finally{
-    btn.disabled=false;
-  }
-});
+    $('progress').style.width='100%';$('uploadMsg').className='ok';$('uploadMsg').textContent='Draft uploaded. Preview it, then publish.';await refresh();
+  }catch(e){$('uploadMsg').className='bad';$('uploadMsg').textContent=e.message}finally{$('uploadBtn').disabled=false}
+};
+$('publishBtn').onclick=async()=>{try{await api('/api/publish',{method:'POST',body:JSON.stringify({tv:tv()})});await refresh();alert('Published. TV should update shortly.')}catch(e){alert(e.message)}};
+$('rollbackBtn').onclick=async()=>{try{await api('/api/rollback',{method:'POST',body:JSON.stringify({tv:tv()})});await refresh();alert('Previous video restored.')}catch(e){alert(e.message)}};
+$('emergencyBtn').onclick=async()=>{if(!draft?.url)return alert('Upload a draft first');await api('/api/emergency',{method:'POST',body:JSON.stringify({tv:tv(),enabled:true,video:draft})});await refresh();alert('Emergency override enabled.')};
+$('clearEmergencyBtn').onclick=async()=>{await api('/api/emergency',{method:'POST',body:JSON.stringify({tv:tv(),enabled:false})});await refresh()};
+$('addScheduleBtn').onclick=async()=>{if(!draft?.url)return alert('Upload a draft first');const s=$('schedStart').value,e=$('schedEnd').value;if(!s||!e)return alert('Choose start and end');const entries=[...(state.schedule||[]),{start:new Date(s).toISOString(),end:new Date(e).toISOString(),enabled:true,video:draft}];await api('/api/schedule',{method:'POST',body:JSON.stringify({tv:tv(),entries})});await refresh()};
+$('clearScheduleBtn').onclick=async()=>{await api('/api/schedule',{method:'POST',body:JSON.stringify({tv:tv(),entries:[]})});await refresh()};
+$('saveSettingsBtn').onclick=async()=>{await api('/api/settings',{method:'POST',body:JSON.stringify({tv:tv(),orientation:Number($('orientation').value),fit:$('fit').value,fallback:$('fallback').value})});await refresh();alert('Settings saved.')};
+
+(async()=>{try{const s=await fetch('/api/session',{credentials:'include'}).then(r=>r.json());if(s.authenticated){showApp();await refresh()}else showLogin()}catch{showLogin()}})();
+setInterval(()=>{if(!$('app').classList.contains('hidden'))refresh().catch(()=>{})},30000);
 </script>
 </body>
 </html>
