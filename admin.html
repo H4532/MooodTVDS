@@ -227,7 +227,7 @@ $('addScheduleBtn').onclick=async()=>{if(!state?.draft?.url)return alert('Upload
 $('clearScheduleBtn').onclick=async()=>{await api('/api/schedule',{method:'POST',body:JSON.stringify({tv:selectedTv,entries:[]})});await refreshAll()};
 $('saveSettingsBtn').onclick=async()=>{await api('/api/settings',{method:'POST',body:JSON.stringify({tv:selectedTv,orientation:Number($('orientation').value),fit:$('fit').value,fallback:$('fallback').value})});await refreshAll();alert('Settings saved')};
 
-(async()=>{try{const s=await fetch('/api/session',{credentials:'include'}).then(r=>r.json());if(s.authenticated){showApp();await loadTvList();selectedTv=tvs[0]||'tv1';await refreshAll()}else showLogin()}catch{showLogin()}})();
+showLogin();
 setInterval(()=>{if(!$('app').classList.contains('hidden'))refreshAll().catch(()=>{})},30000);
 </script>
 </body>
