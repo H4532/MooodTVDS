@@ -1,7 +1,7 @@
-import { issueSignedToken, del } from '@vercel/blob';
+import { issueSignedToken } from '@vercel/blob';
 import { handleUploadPresigned } from '@vercel/blob/client';
 import { isAuthenticated } from '../lib/auth.js';
-import { readJson, writeJson, safeTvId, appendHistory } from '../lib/state.js';
+import { writeJson, safeTvId, appendHistory, cleanupUnreferencedVideos } from '../lib/state.js';
 
 export default async function handler(request,response){
   if(request.method!=='POST') return response.status(405).json({error:'Method not allowed'});
@@ -40,10 +40,6 @@ export default async function handler(request,response){
       onUploadCompleted:async({blob})=>{
         const parts=String(blob.pathname||'').split('/');
         const tv=safeTvId(parts.length>1?parts[1]:'tv1');
-        const oldDraft=await readJson('state/'+tv+'/draft.json',null);
-        if(oldDraft?.url && oldDraft.url!==blob.url){
-          try{await del(oldDraft.url,{oidcToken:process.env.VERCEL_OIDC_TOKEN,storeId:process.env.BLOB_STORE_ID})}catch{}
-        }
         const draft={
           url:blob.url,
           pathname:blob.pathname,
@@ -53,6 +49,7 @@ export default async function handler(request,response){
         };
         await writeJson('state/'+tv+'/draft.json',draft);
         await appendHistory(tv,{action:'draft_uploaded',url:blob.url,pathname:blob.pathname});
+        await cleanupUnreferencedVideos(tv);
       }
     });
     response.status(200).json(jsonResponse);
